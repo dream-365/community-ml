@@ -30,6 +30,7 @@ class LSAQueryEngine (
     val VS : BDenseMatrix[Double] = multiplyMatrixByDiagnoal(svd.V, svd.s)
     val normalizedUS : RowMatrix = normalizeDistributedRows(US)
     val normalizedVS : BDenseMatrix[Double] = normalizeRows(VS)
+    val termMap = terms.zipWithIndex.toMap
     
     def normalizeDistributedRows (mat : RowMatrix) : RowMatrix = {
         new RowMatrix(mat.rows.map { row =>  
@@ -76,5 +77,11 @@ class LSAQueryEngine (
         val termVec = normalizedVS(termIdx, ::).t
         val scores = (normalizedVS*termVec).toArray.zipWithIndex
         scores.sortBy(-_._1).take(10)
+    }
+
+    def termsToQueryVector(termsForQuery : Seq[String]) : BSparseVector[Double] = {
+        val indices = termsForQuery.map{term => termMap(term)}.toArray
+        val values = indices.map{i => termIdfs(i)}.toArray
+        new BSparseVector[Double](indices, values, termIdfs.size)
     }
 }
