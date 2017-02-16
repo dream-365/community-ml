@@ -26,14 +26,14 @@ import org.apache.spark.mllib.linalg.{SparseVector, DenseVector}
 // bzip2 -cd 
 // hadoop fs -put - /user/ds/wikidump.xml
 // $SPARK_HOME/bin/spark-shell --packages edu.stanford.nlp:stanford-corenlp:3.7.0 --master spark://10.0.0.4:7077 --driver-memory 4G --executor-memory 8G
-// http://repo1.maven.org/maven2/edu/stanford/nlp/stanford-corenlp/$version/stanford-corenlp-$version-models.jar
+// http://repo1.maven.org/maven2/edu/stanford/nlp/stanford-corenlp/3.7.0/stanford-corenlp-3.7.0-models.jar
 
 
 /*
 ./bin/spark-shell \
---master spark://node1.lab.net:7077 --driver-memory 4G --executor-memory 8G \
+--master local[*] --driver-memory 4G --executor-memory 8G \
 --packages edu.stanford.nlp:stanford-corenlp:3.7.0,org.mongodb.spark:mongo-spark-connector_2.11:2.0.0 \
---jars /opt/jars/stanford-corenlp-3.7.0-models-english.jar,/home/jec/jars/lsa-project_2.11-1.0.jar
+--jars /home/spark/jars/stanford-corenlp-3.7.0-models-english.jar,/home/spark/jars/lsa-project_2.11-1.0.jar
 */
 
 
@@ -47,8 +47,8 @@ object RunLSA {
                         getOrCreate()       
         val numTerms = 10000
         val k = 5000
-        val stopWordsFileUri = "hdfs://node1.lab.net:9000/data/stopwords.txt"
-        val readConfig = ReadConfig(Map("uri"->"mongodb://cas:cas$mongodb@node1.lab.net,node2.lab.net/cas.msdn_technet_questions_uwp?replicaSet=rs0"))
+        val stopWordsFileUri = "/home/spark/data/stopwords.txt"
+        val readConfig = ReadConfig(Map("uri"->"mongodb://cas:cas$mongodb@node1.lab.net,node2.lab.net/cas.msdn_technet_questions?replicaSet=rs0"))
         val questionDF = MongoSpark.load(spark, readConfig)
 
         import spark.implicits._
@@ -121,17 +121,5 @@ object RunLSA {
         }
 
         topDocs
-    }
-
-    def calculateDistance () = {
-        mat.rows.map { vec => 
-            val a1 = vec.toArray
-            val a2 = docVec
-            var value : Double = 0;
-            for( i <- 0 until a1.size) {
-                value = value + math.abs(a1(i) - a2(i))
-            }
-            -value
-        }
     }
 }
