@@ -26,14 +26,15 @@ import org.apache.spark.mllib.linalg.{SparseVector, DenseVector}
 // bzip2 -cd 
 // hadoop fs -put - /user/ds/wikidump.xml
 // $SPARK_HOME/bin/spark-shell --packages edu.stanford.nlp:stanford-corenlp:3.7.0 --master spark://10.0.0.4:7077 --driver-memory 4G --executor-memory 8G
-// http://repo1.maven.org/maven2/edu/stanford/nlp/stanford-corenlp/3.7.0/stanford-corenlp-3.7.0-models.jar
+// http://repo1.maven.org/maven2/edu/stanford/nlp/stanford-corenlp/3.7.0/stanford-corenlp-3.7.0-models-english.jar
 
 
 /*
-./bin/spark-shell \
---master local[*] --driver-memory 4G --executor-memory 8G \
+$SPARK_HOME/bin/spark-shell \
+--master local[4] \
+--driver-memory 8G --executor-memory 16G \
 --packages edu.stanford.nlp:stanford-corenlp:3.7.0,org.mongodb.spark:mongo-spark-connector_2.11:2.0.0 \
---jars /home/spark/jars/stanford-corenlp-3.7.0-models-english.jar,/home/spark/jars/lsa-project_2.11-1.0.jar
+--jars /home/spark/jars/stanford-corenlp-3.7.0-models-english.jar,/home/spark/jars/community-ml-project_2.11-1.0.jar
 */
 
 
@@ -45,10 +46,11 @@ object RunLSA {
                         appName("CML Application").
                         enableHiveSupport().
                         getOrCreate()       
-        val numTerms = 10000
-        val k = 5000
+        val numTerms = 50000
+        val k = 500
         val stopWordsFileUri = "/home/spark/data/stopwords.txt"
-        val readConfig = ReadConfig(Map("uri"->"mongodb://cas:cas$mongodb@node1.lab.net,node2.lab.net/cas.msdn_technet_questions?replicaSet=rs0"))
+        val readConfig = ReadConfig(
+            Map("uri"->"mongodb://10.168.176.26:27017,10.157.13.245:27017/community.msdn_technet_questions?replicaSet=rs0&readPreference=secondary"))
         val questionDF = MongoSpark.load(spark, readConfig)
 
         import spark.implicits._

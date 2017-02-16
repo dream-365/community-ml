@@ -10,7 +10,7 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import java.util.Properties
 
-case class TextDocument (val title : String, val text : String)
+case class TextDocument (val id : String, val text : String)
 
 class AssembleDocumentTermMatrix (private val spark : SparkSession) extends Serializable {
     import spark.implicits._
