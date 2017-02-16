@@ -10,7 +10,7 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import java.util.Properties
 
-case class TextDocument (val id : String, val text : String)
+case class TextDocument (val id : String, val title : String, val text : String)
 
 class AssembleDocumentTermMatrix (private val spark : SparkSession) extends Serializable {
     import spark.implicits._
@@ -32,29 +32,8 @@ class AssembleDocumentTermMatrix (private val spark : SparkSession) extends Seri
         docs.mapPartitions { iter =>
             val pipeline = createNLPPipeline()
             val stopWords = bStopWords.value.toSet
-            iter.map { case d : TextDocument => (d.title, 
+            iter.map { case d : TextDocument => (d.id, 
                 plainTextToLemmas(d.title, stopWords, pipeline) ++ plainTextToLemmas(d.text, stopWords, pipeline)) }
-        }
-    }
-
-    def contentToTerms (docs : Dataset[TextDocument], stopWordsFile : String) 
-        : Dataset[(String, Seq[String])] = {
-        val bStopWords = spark.sparkContext.broadcast(spark.read.textFile(stopWordsFile).collect())
-
-        docs.mapPartitions { iter =>
-            val pipeline = createNLPPipeline()
-            val stopWords = bStopWords.value.toSet
-            iter.map { case d : TextDocument => (d.title, plainTextToLemmas(d.text, stopWords, pipeline)) }
-        }
-    }
-
-    def titleToTerms (docs : Dataset[TextDocument], stopWordsFile : String) : Dataset[(String, Seq[String])] = {
-        val bStopWords = spark.sparkContext.broadcast(spark.read.textFile(stopWordsFile).collect())
-
-        docs.mapPartitions { iter =>
-            val pipeline = createNLPPipeline()
-            val stopWords = bStopWords.value.toSet
-            iter.map { case d : TextDocument => (d.title, plainTextToLemmas(d.title, stopWords, pipeline)) }
         }
     }
 
@@ -79,7 +58,7 @@ class AssembleDocumentTermMatrix (private val spark : SparkSession) extends Seri
         numTerms : Int,
         saveAsFile : String) {
         val terms = titleAndContentToTerms(docs, stopWordsFile)     
-        val termDF = terms.toDF("title", "terms")
+        val termDF = terms.toDF("id", "terms")
         val filtered = termDF.where(size($"terms") > 1)
         val countVectorizer = new CountVectorizer().
             setInputCol("terms").
@@ -93,8 +72,8 @@ class AssembleDocumentTermMatrix (private val spark : SparkSession) extends Seri
 
     def  documentTermMatrix(docs : Dataset[TextDocument], stopWordsFile : String, numTerms : Int)
         : (DataFrame, Array[String], Map[Long, String], Array[Double]) = {
-        val terms = contentToTerms(docs, stopWordsFile)
-        val termDF = terms.toDF("title", "terms")
+        val docsWithTerms = titleAndContentToTerms(docs, stopWordsFile)
+        val termDF = docsWithTerms.toDF("id", "terms")
         val filtered = termDF.where(size($"terms") > 1)
         val countVectorizer = new CountVectorizer().
             setInputCol("terms").
@@ -104,17 +83,17 @@ class AssembleDocumentTermMatrix (private val spark : SparkSession) extends Seri
         val vocabModel = countVectorizer.fit(filtered)
         val vocabTremFreqs = vocabModel.transform(filtered)
         val docTermFreqs = vocabModel.transform(filtered)
-        val termIds = vocabModel.vocabulary
+        val terms = vocabModel.vocabulary
 
         docTermFreqs.cache()
 
-        val docIds = docTermFreqs.select("title").rdd
-            .zipWithUniqueId.map{ case (row, id) => (id, row.getAs[String]("title")) }.collect.toMap
+        val docMap = docTermFreqs.select("id").rdd
+            .zipWithIndex.map{ case (row, idx) => (idx, row.getAs[String]("id")) }.collect.toMap
 
         val idf = new IDF().setInputCol("termFreqs").setOutputCol("tfidfVec")
         val idfModel = idf.fit(docTermFreqs)
-        val docTermMatrix = idfModel.transform(docTermFreqs).select("title", "tfidfVec")
+        val docTermMatrix = idfModel.transform(docTermFreqs).select("id", "tfidfVec")
 
-        (docTermMatrix, termIds, docIds, idfModel.idf.toArray)
+        (docTermMatrix, terms, docMap, idfModel.idf.toArray)
     }
 }

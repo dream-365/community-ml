@@ -46,8 +46,11 @@ object RunLSA {
                         appName("CML Application").
                         enableHiveSupport().
                         getOrCreate()       
-        val numTerms = 50000
-        val k = 500
+        val (engine, terms, docMap) = build(spark, 50000, 500)
+        engine.topDocsForDocs(1000).map { case (weight, idx) => docMap(idx) }.foreach(println)
+    }
+
+    def build (spark : SparkSession, numTerms : Int, k : Int) : (LSAQueryEngine, Array[String], Map[Long, String]) = {
         val stopWordsFileUri = "/home/spark/data/stopwords.txt"
         val readConfig = ReadConfig(
             Map("uri"->"mongodb://10.168.176.26:27017,10.157.13.245:27017/community.msdn_technet_questions?replicaSet=rs0&readPreference=secondary"))
@@ -55,12 +58,12 @@ object RunLSA {
 
         import spark.implicits._
 
-        val docs = questionDF.select("title", "text").as[TextDocument]
+        val docs = questionDF.select("id", "title", "text").as[TextDocument]
         val assembleMatrix = new AssembleDocumentTermMatrix(spark)
 
         import assembleMatrix._
 
-        val (docTermMatrix, termIds, docIds, termIdfs) = documentTermMatrix(docs, stopWordsFileUri, numTerms)
+        val (docTermMatrix, terms, docMap, termIdfs) = documentTermMatrix(docs, stopWordsFileUri, numTerms)
 
         val vecRdd = docTermMatrix.rdd.map { row =>
             val sparseVec = row.getAs[MLVector]("tfidfVec").toSparse
@@ -72,28 +75,27 @@ object RunLSA {
         val mat = new RowMatrix(vecRdd)
         val svd = mat.computeSVD(k, computeU = true)
 
-        val topConceptTerms = topTermsInTopConcept(svd, 10, 10, termIds)
-        val topConceptDocs = topDocsInTopConcept(svd, 10, 10, docIds)
+        val topConceptTerms = topTermsInTopConcept(svd, 10, 10, terms)
+        val topConceptDocs = topDocsInTopConcept(svd, 10, 10, docMap)
 
-        for((terms, docs) <- topConceptTerms.zip(topConceptDocs)) {
-            println("Concept Terms: " + terms.map(_._1).mkString(", "))
-            println("Concept Docs: " + docs.map(_._1).mkString(", "))
+        for((ts, docs) <- topConceptTerms.zip(topConceptDocs)) {
+            println("Concept Terms: " + ts.map(_._1).mkString(", "))
+            println("Concept Docs: " + ts.map(_._1).mkString(", "))
         }
 
-        val engine = new LSAQueryEngine(svd, termIds, docIds, termIdfs)
+        val engine = new LSAQueryEngine(svd, terms, docMap, termIdfs)
 
-        engine.topDocsForDocs(1000).map { case (weight, id) => docIds(id) }.foreach(println)
+        (engine, terms, docMap)
     }
 
-    def printDocTitles (ids : Seq[Long], docIds : Map[Long, String]) = {
-        ids.map(docIds(_)).foreach(println)
+    def printDocTitles (ids : Seq[Long], docMap : Map[Long, String]) = {
+        ids.map(docMap(_)).foreach(println)
     }
-
 
     def topTermsInTopConcept (svd : SingularValueDecomposition[RowMatrix, Matrix],
         numConcepts : Int,
         numTerms : Int,
-        termIds : Array[String]      
+        terms : Array[String]      
     ) : Seq[Seq[(String, Double)]] = {
         val v = svd.V
         val topTerms = new ArrayBuffer[Seq[(String, Double)]]
@@ -103,7 +105,7 @@ object RunLSA {
             val offset = i * v.numRows
             val termWeights = arr.slice(offset, offset + v.numRows).zipWithIndex
             val sorted = termWeights.sortBy(-_._1)
-            topTerms += sorted.take(numTerms).map { case (score, id) => (termIds(id), score) }
+            topTerms += sorted.take(numTerms).map { case (score, id) => (terms(id), score) }
         }
 
         topTerms
@@ -112,16 +114,14 @@ object RunLSA {
     def topDocsInTopConcept (svd : SingularValueDecomposition[RowMatrix, Matrix], 
         numConcepts : Int,
         numDocs : Int,
-        docIds : Map[Long, String]
+        docMap : Map[Long, String]
     ) : Seq[Seq[(String, Double)]] = {
         val u = svd.U
-        val topDocs = new ArrayBuffer[Seq[(String, Double)]]
-        
+        val topDocs = new ArrayBuffer[Seq[(String, Double)]]  
         for (i <- 0 until numConcepts) {
             val docWeights = u.rows.map(_.toArray(i)).zipWithIndex
-            topDocs += docWeights.top(numDocs).map { case (score, id) => (docIds(id), score) }
+            topDocs += docWeights.top(numDocs).map { case (score, id) => (docMap(id), score) }
         }
-
         topDocs
     }
 }

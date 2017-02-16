@@ -22,12 +22,14 @@ import scala.collection.mutable.ArrayBuffer
 
 class LSAQueryEngine (
     val svd : SingularValueDecomposition[RowMatrix, Matrix], 
-    val termIds : Array[String],
-    val docIds : Map[Long, String],
-    val termIdfs : Array[Double]) {
+    val terms : Array[String],
+    val docMap : Map[Long, String],
+    val termIdfs : Array[Double]) extends Serializable {
 
     val US : RowMatrix = multiplyRowMatrixByDiagnoal(svd.U, svd.s)
+    val VS : BDenseMatrix[Double] = multiplyMatrixByDiagnoal(svd.V, svd.s)
     val normalizedUS : RowMatrix = normalizeDistributedRows(US)
+    val normalizedVS : BDenseMatrix[Double] = normalizeRows(VS)
     
     def normalizeDistributedRows (mat : RowMatrix) : RowMatrix = {
         new RowMatrix(mat.rows.map { row =>  
@@ -35,6 +37,15 @@ class LSAQueryEngine (
             val length = math.sqrt(array.map { v => v * v }.sum)
             Vectors.dense(array.map(_ / length ).toArray)
         })
+    }
+
+    def normalizeRows (mat : BDenseMatrix[Double]) : BDenseMatrix[Double]  = {
+        val newMatrix = new BDenseMatrix[Double](mat.rows, mat.cols)
+        for (r <- 0 until mat.rows) {
+            val length = math.sqrt((0 until mat.cols).map{c => mat(r, c) * mat(r, c)}.sum)
+            (0 until mat.cols).foreach(c => newMatrix.update(r, c, mat(r, c) / length))
+        }
+        newMatrix
     }
 
     def multiplyMatrixByDiagnoal (mat : Matrix, diag : MLLibVector) : BDenseMatrix[Double] = {
@@ -53,11 +64,17 @@ class LSAQueryEngine (
         })
     }
 
-    def topDocsForDocs(docId : Long) : Seq[(Double, Long)] = {
-        val docArray = normalizedUS.rows.zipWithIndex.map(_.swap).lookup(docId).head.toArray
+    def topDocsForDocs(docIndex : Long) : Seq[(Double, Long)] = {
+        val docArray = normalizedUS.rows.zipWithIndex.map(_.swap).lookup(docIndex).head.toArray
         val docMatrix = Matrices.dense(docArray.length, 1, docArray)
         val allDocScores = normalizedUS.multiply(docMatrix)
         val allDocWeights = allDocScores.rows.map(_.toArray(0)).zipWithIndex
         allDocWeights.filter(!_._1.isNaN).top(10)
+    }
+
+    def topTermsForTerms(termIdx : Int) : Seq[(Double, Int)] = { 
+        val termVec = normalizedVS(termIdx, ::).t
+        val scores = (normalizedVS*termVec).toArray.zipWithIndex
+        scores.sortBy(-_._1).take(10)
     }
 }
