@@ -80,7 +80,7 @@ object RunLSA {
 
         for((ts, docs) <- topConceptTerms.zip(topConceptDocs)) {
             println("Concept Terms: " + ts.map(_._1).mkString(", "))
-            println("Concept Docs: " + ts.map(_._1).mkString(", "))
+            println("Concept Docs: " + docs.map(_._1).mkString(", "))
         }
 
         val engine = new LSAQueryEngine(svd, terms, docMap, termIdfs)
