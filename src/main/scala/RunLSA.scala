@@ -36,6 +36,14 @@ $SPARK_HOME/bin/spark-shell \
 --driver-memory 8G --executor-memory 16G \
 --packages edu.stanford.nlp:stanford-corenlp:3.7.0,org.mongodb.spark:mongo-spark-connector_2.11:2.0.0 \
 --jars /home/spark/jars/stanford-corenlp-3.7.0-models-english.jar,/home/spark/jars/community-ml-project_2.11-1.0.jar
+
+$SPARK_HOME/bin/spark-submit \
+--class com.community.datascience.RunLSA \
+--master local[4] \
+--driver-memory 8G --executor-memory 16G \
+--packages edu.stanford.nlp:stanford-corenlp:3.7.0,org.mongodb.spark:mongo-spark-connector_2.11:2.0.0 \
+--jars /home/spark/jars/stanford-corenlp-3.7.0-models-english.jar \
+/home/spark/jars/community-ml-project_2.11-1.0.jar
 */
 
 
