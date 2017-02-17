@@ -16,6 +16,7 @@ import com.mongodb.spark._
 import com.mongodb.spark.config._
 import java.util.Properties
 import scala.collection.JavaConverters._
+import org.bson.Document
 
 import scala.collection.Map
 import scala.collection.mutable.ArrayBuffer
@@ -47,7 +48,27 @@ object RunLSA {
                         enableHiveSupport().
                         getOrCreate()       
         val (engine, terms, docMap) = build(spark, 50000, 500)
-        engine.topDocsForDocs(1000).map { case (weight, idx) => docMap(idx) }.foreach(println)
+        val docInverseMap = docMap.map{ kv => (kv._2, kv._1)}.toMap
+        val readConfig = ReadConfig(
+            Map("uri"->"mongodb://10.168.176.26:27017,10.157.13.245:27017/community.lsa_tasks?replicaSet=rs0"))
+        val writeConfig = WriteConfig(
+            Map("uri"->"mongodb://10.168.176.26:27017,10.157.13.245:27017/community.lsa_results?replicaSet=rs0"))
+        import spark.implicits._
+        val tasks = MongoSpark.load(spark, readConfig).select("id").as[String].collect.toSeq
+
+        val documents = new ArrayBuffer[Document]
+        tasks.foreach(id => {
+            val index = docInverseMap(id)
+            val tops = engine.topDocsForDocs(index).map { case (weight : Double, idx : Long) => 
+                new Document(
+                    Map[String,Object]("id" -> docMap(idx), "weight" -> weight.asInstanceOf[AnyRef]).asJava)
+            }
+            documents += new Document(Map[String, Object]("id" -> id, "tops" -> tops).asJava)
+        })
+        MongoSpark.save(spark.sparkContext.parallelize(documents.toSeq), writeConfig)
+
+        println("complete")
+        // send a notification
     }
 
     def build (spark : SparkSession, numTerms : Int, k : Int) : (LSAQueryEngine, Array[String], Map[Long, String]) = {
