@@ -70,7 +70,7 @@ object RunLSA {
             val tops = engine.topDocsForDocs(index).map { case (weight : Double, idx : Long) => 
                 new Document(
                     Map[String,Object]("id" -> docMap(idx), "weight" -> weight.asInstanceOf[AnyRef]).asJava)
-            }
+            }.toArray
             documents += new Document(Map[String, Object]("id" -> id, "tops" -> tops).asJava)
         })
         MongoSpark.save(spark.sparkContext.parallelize(documents.toSeq), writeConfig)
