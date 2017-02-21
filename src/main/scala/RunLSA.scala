@@ -68,10 +68,9 @@ object RunLSA {
         tasks.foreach(id => {
             val index = docInverseMap(id)
             val tops = engine.topDocsForDocs(index).map { case (weight : Double, idx : Long) => 
-                new Document(
-                    Map[String,Object]("id" -> docMap(idx), "weight" -> weight.asInstanceOf[AnyRef]).asJava)
-            }.toArray
-            documents += new Document(Map[String, Object]("id" -> id, "tops" -> tops).asJava)
+                new Document(Map[String,Object]("id" -> id, "relateId" -> docMap(idx), "weight" -> weight.asInstanceOf[AnyRef]).asJava)
+            }
+            documents ++= tops
         })
         MongoSpark.save(spark.sparkContext.parallelize(documents.toSeq), writeConfig)
 
