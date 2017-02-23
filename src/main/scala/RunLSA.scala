@@ -39,14 +39,12 @@ $SPARK_HOME/bin/spark-shell \
 
 $SPARK_HOME/bin/spark-submit \
 --class com.community.datascience.RunLSA \
---master local[4] \
---driver-memory 8G --executor-memory 16G \
+--master spark://prod1.ca.net:7077 \
+--driver-memory 4G --executor-memory 4G \
 --packages edu.stanford.nlp:stanford-corenlp:3.7.0,org.mongodb.spark:mongo-spark-connector_2.11:2.0.0 \
 --jars /home/spark/jars/stanford-corenlp-3.7.0-models-english.jar \
-/home/spark/jars/community-ml-project_2.11-1.0.jar
+/home/ca/community-ml-project_2.11-1.0.jar
 */
-
-
 
 object RunLSA {
     def main (args : Array[String]) : Unit = {  
@@ -68,16 +66,17 @@ object RunLSA {
         tasks.foreach(id => {
             val index = docInverseMap(id)
             val tops = engine.topDocsForDocs(index).map { case (weight : Double, idx : Long) => 
-                new Document(Map[String,Object]("id" -> id, "relateId" -> docMap(idx), "weight" -> weight.asInstanceOf[AnyRef]).asJava)
-            }
-            documents ++= tops
+                new Document(
+                    Map[String,Object]("id" -> docMap(idx), "weight" -> weight.asInstanceOf[AnyRef]).asJava)
+            }.toArray
+            documents += new Document(Map[String, Object]("id" -> id, "tops" -> tops).asJava)
         })
         MongoSpark.save(spark.sparkContext.parallelize(documents.toSeq), writeConfig)
 
         println("complete")
         // send a notification
     }
-
+ 
     def build (spark : SparkSession, numTerms : Int, k : Int) : (LSAQueryEngine, Array[String], Map[Long, String]) = {
         val stopWordsFileUri = "/home/spark/data/stopwords.txt"
         val readConfig = ReadConfig(
