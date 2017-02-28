@@ -62,13 +62,16 @@ object RunLSA {
         import spark.implicits._
         val tasks = MongoSpark.load(spark, readConfig).select("id").as[String].collect.toSeq
         tasks.foreach(id => {
-             MongoSpark.save(spark.sparkContext.parallelize(engine.topDocsForDocs(docInverseMap(id)).
+            if(docInverseMap.contains(id))
+            {
+                MongoSpark.save(spark.sparkContext.parallelize(engine.topDocsForDocs(docInverseMap(id)).
                                 map { case (weight : Double, idx : Long) => 
                                     new Document(Map[String,Object](
                                         "id" -> id, 
                                         "relateId" -> docMap(idx), 
                                         "weight" -> weight.asInstanceOf[AnyRef]).asJava)
                                     }), writeConfig)
+            }
         })
 
         println("complete")
