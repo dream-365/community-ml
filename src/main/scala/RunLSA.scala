@@ -56,32 +56,29 @@ object RunLSA {
         val (engine, terms, docMap) = build(spark, 50000, 500)
         val docInverseMap = docMap.map{ kv => (kv._2, kv._1)}.toMap
         val readConfig = ReadConfig(
-            Map("uri"->"mongodb://10.168.176.26:27017,10.157.13.245:27017/community.lsa_tasks?replicaSet=rs0"))
+            Map("uri"->"mongodb://minint-qvps4a4:27017,vmas-svr001:27017/community.lsa_tasks?replicaSet=rs0"))
         val writeConfig = WriteConfig(
-            Map("uri"->"mongodb://10.168.176.26:27017,10.157.13.245:27017/community.lsa_results?replicaSet=rs0"))
+            Map("uri"->"mongodb://minint-qvps4a4:27017,vmas-svr001:27017/community.lsa_results?replicaSet=rs0"))
         import spark.implicits._
         val tasks = MongoSpark.load(spark, readConfig).select("id").as[String].collect.toSeq
-
-        val documents = new ArrayBuffer[Document]
         tasks.foreach(id => {
-            val index = docInverseMap(id)
-            val tops = engine.topDocsForDocs(index).map { case (weight : Double, idx : Long) => 
-                new Document(
-                    Map[String,Object]("id" -> docMap(idx), "weight" -> weight.asInstanceOf[AnyRef]).asJava)
-            }.toArray
-            documents += new Document(Map[String, Object]("id" -> id, "tops" -> tops).asJava)
+             MongoSpark.save(spark.sparkContext.parallelize(engine.topDocsForDocs(docInverseMap(id)).
+                                map { case (weight : Double, idx : Long) => 
+                                    new Document(Map[String,Object](
+                                        "id" -> id, 
+                                        "relateId" -> docMap(idx), 
+                                        "weight" -> weight.asInstanceOf[AnyRef]).asJava)
+                                    }), writeConfig)
         })
-        MongoSpark.save(spark.sparkContext.parallelize(documents.toSeq), writeConfig)
 
         println("complete")
-        // send a notification
     }
  
     def build (spark : SparkSession, numTerms : Int, k : Int) : (LSAQueryEngine, Array[String], Map[Long, String]) = {
         val stopWordsFileUri = "/home/spark/data/stopwords.txt"
         val readConfig = ReadConfig(
-            Map("uri"->"mongodb://10.168.176.26:27017,10.157.13.245:27017/community.msdn_technet_questions?replicaSet=rs0&readPreference=secondary"))
-        val questionDF = MongoSpark.load(spark, readConfig)
+            Map("uri"->"mongodb://minint-qvps4a4:27017,vmas-svr001:27017/community.msdn_technet_questions?replicaSet=rs0&readPreference=secondary"))
+        val questionDF = MongoSpark.load(spark, readConfig).repartition(8)
 
         import spark.implicits._
 
